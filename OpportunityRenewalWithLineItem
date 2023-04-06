@@ -1,7 +1,7 @@
 -------------------------------Renew Opportunity along with quote Line Item----------------------
 public class NewBusinessTriggerHandler { 
    		
-    //Method for updating Opportunity of NewBusiness & Renewal RecordType
+    //Method for updating NewBusiness Recordtype Opportunity
     public static void Newbusinessrecordupdate(list<Opportunity> newlist, map<id,Opportunity> oldmap) {
         if (Schema.SObjectType.Opportunity.isUpdateable()) {
             try {
@@ -52,39 +52,40 @@ public class NewBusinessTriggerHandler {
                     }
                 }
         
-                 //Check list then insert
-		if(!updateopp.isEmpty()){
-			Database.SaveResult[] srList = Database.insert(updateopp, false);
-		}
+                //Check list then insert
+				if(!updateopp.isEmpty()){
+					Database.SaveResult[] srList = Database.insert(updateopp, false);
+				}
 				
-		// Query the line items of Orignal Opportunity filter by set of orignal opportunityIds
-		List<OpportunityLineItem> origLineItems = [SELECT Id, PricebookEntryId, Quantity, UnitPrice, PricebookEntry.Product2.Name, OpportunityId FROM OpportunityLineItem WHERE OpportunityId = :originId];
+				// Query the line items of Orignal Opportunity filter by set of orignal opportunityIds
+				List<OpportunityLineItem> origLineItems = [SELECT Id, PricebookEntryId, Quantity, UnitPrice, PricebookEntry.Product2.Name, OpportunityId FROM OpportunityLineItem WHERE OpportunityId = :originId];
 
-		for (integer i=0; i<srList.size(); i++) {
+				for (integer i=0; i<srList.size(); i++) {
 
-			system.debug('srList : '+i+' : '+srList[i].isSuccess());
+						system.debug('srList : '+i+' : '+srList[i].isSuccess());
 
-			if(srList[i].isSuccess()){
+						if(srList[i].isSuccess()){
 			
-				List<OpportunityLineItem> clonedLineItems = new List<OpportunityLineItem>();
-				if (!updateopp.isEmpty()) {
+							List<OpportunityLineItem> clonedLineItems = new List<OpportunityLineItem>();
+							if (!updateopp.isEmpty()) {
 								
-					//Iterating over Orignal Opportunity LineItem and Cloning them to put in clone Opportunity
-					for (OpportunityLineItem origLineItem : origLineItems) {
-						if (origLineItem.PricebookEntry.Product2.Name != 'InstallationFee') { // exclude the installation fee product
-							OpportunityLineItem clonedLineItem = origLineItem.clone();
-							clonedLineItem.OpportunityId = renewalOpps.get(origLineItem.OpportunityId).Id;
-							clonedLineItems.add(clonedLineItem);
+								//Iterating over Orignal Opportunity LineItem and Cloning them to put in clone Opportunity
+								for (OpportunityLineItem origLineItem : origLineItems) {
+									if (origLineItem.PricebookEntry.Product2.Name != 'InstallationFee') { // exclude the installation fee product
+										OpportunityLineItem clonedLineItem = origLineItem.clone();
+										clonedLineItem.OpportunityId = renewalOpps.get(origLineItem.OpportunityId).Id;
+										clonedLineItems.add(clonedLineItem);
+									}
+								}
+								system.debug('CloneItem ===>' + clonedLineItems);
+							}
 						}
-					}
-					system.debug('CloneItem ===>' + clonedLineItems);
-				}
-				else{
-					errorMap.put(clonedList[i].ParentId__c,srList[i].getErrors().get(0).getStatusCode()+':'+srList[i].getErrors().get(0).getMessage());
+						else{
 
+							errorMap.put(clonedList[i].ParentId__c,srList[i].getErrors().get(0).getStatusCode()+':'+srList[i].getErrors().get(0).getMessage());
+
+						}
 				}
-			}
-		}
         
                 //Check list of ClonedLineItems then insert
                 if (!clonedLineItems.isEmpty()) {
@@ -109,8 +110,9 @@ trigger NewBusiness_Trigger on Opportunity (after insert, after update) {
      }   
 }
 
-------------------------------Test Class----------------------------------------
 
+
+------------------------------------------------------------
 @isTest
 private class NewBusinessTriggerHandlerTest {
     @IsTest
