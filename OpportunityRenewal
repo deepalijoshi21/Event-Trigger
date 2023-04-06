@@ -96,3 +96,77 @@ trigger NewBusiness_Trigger on Opportunity (after insert, after update) {
 
      }   
 }
+
+------------------------------Test Class----------------------------------------
+
+@isTest
+private class NewBusinessTriggerHandlerTest {
+    @IsTest
+    static void testNewbusinessrecordupdate() {
+        // Create test data
+        // Get RecordType 
+        RecordType newBusinessRT = [SELECT Id FROM RecordType WHERE SObjectType = 'Opportunity' AND Name = 'New Business' LIMIT 1];
+        RecordType renewalRT = [SELECT Id FROM RecordType WHERE SObjectType = 'Opportunity' AND Name = 'Renewal' LIMIT 1];
+        
+        //Get Id of standardPriceBook
+        Id pb = Test.getStandardPricebookId();
+        
+        //Create Products
+        Product2 product = new Product2(Name='Test Product', isActive=true);
+        insert product;
+        Product2 productInstallation = new Product2(Name='InstallationFee', isActive=true);
+        insert productInstallation;
+        
+        //Create PriceBookEntry with created products
+        PricebookEntry pbEntry = new PricebookEntry(Pricebook2Id=pb, Product2Id=product.Id, UnitPrice=100, IsActive=true);
+        insert pbEntry;
+        PricebookEntry pbEntry1 = new PricebookEntry(Pricebook2Id=pb, Product2Id=productInstallation.Id, UnitPrice=100, IsActive=true);
+        insert pbEntry1;
+        
+        //Create New Business Recordtype Opportunity
+        Opportunity opp = new Opportunity(Name='Test Opp', CloseDate=Date.today(), StageName='New', RecordTypeId=newBusinessRT.Id);
+        insert opp;
+        
+        //Create LineItems in New Business Recordtype Opportunity
+        OpportunityLineItem lineItem1 = new OpportunityLineItem(PricebookEntryId=pbEntry.Id, OpportunityId=opp.Id, Quantity=1, UnitPrice=100);
+        OpportunityLineItem lineItem2 = new OpportunityLineItem(PricebookEntryId=pbEntry1.Id, OpportunityId=opp.Id, Quantity=1, UnitPrice=100);
+        
+        //Create Renewal Recordtype Opportunity
+        Opportunity oppRenewal = new Opportunity(Name='Test-Renewal', CloseDate=Date.today(), StageName='Renewal', RecordTypeId=renewalRT.Id);
+        insert oppRenewal;
+        
+        //Create LineItems in Renewal Recordtype Opportunity
+		OpportunityLineItem lineItem3 = new OpportunityLineItem(PricebookEntryId=pbEntry.Id, OpportunityId=oppRenewal.Id, Quantity=1, UnitPrice=100);
+        
+        // Call the method being tested
+        Test.startTest();
+            opp.StageName = 'Closed Won';
+            insert lineItem1;
+            insert lineItem2;
+            update opp;
+            oppRenewal.StageName = 'Closed Won';
+            insert lineItem3;
+            update oppRenewal;
+        Test.stopTest();
+
+        // Verify the results
+        List<Opportunity> renewalOpps = [SELECT Id, RecordTypeId, StageName, Name, CloseDate, Parent_Opportunity__c FROM Opportunity WHERE Parent_Opportunity__c = :opp.Id];
+        Opportunity renewalOpp = renewalOpps[0];
+        System.assertEquals(renewalRT.Id, renewalOpp.RecordTypeId, 'The renewal opportunity should have the correct record type');
+        System.assertEquals('Renewal', renewalOpp.StageName, 'The renewal opportunity should have the correct stage name');
+        System.assertEquals('Test Opp-Renewal', renewalOpp.Name, 'The renewal opportunity should have the correct name');
+        System.assertEquals(opp.Id, renewalOpp.Parent_Opportunity__c, 'The renewal opportunity should have the correct parent opportunity');
+
+        List<OpportunityLineItem> clonedLineItems = [SELECT Id, PricebookEntryId, Quantity, UnitPrice, PricebookEntry.Product2.Name, OpportunityId FROM OpportunityLineItem WHERE OpportunityId = :renewalOpp.Id];
+        OpportunityLineItem clonedLineItem = clonedLineItems[0];
+        System.assertEquals(pbEntry.Id, clonedLineItem.PricebookEntryId, 'The cloned line item should have the correct pricebook entry');
+        System.assertEquals('Test Product', clonedLineItem.PricebookEntry.Product2.Name, 'The cloned line item should have the correct product name');
+        System.assertEquals(renewalOpp.Id, clonedLineItem.OpportunityId, 'The cloned line item should be associated with the renewal opportunity');
+        
+        List<Opportunity> newrenewalOpps = [SELECT Id, RecordTypeId, StageName, Name, CloseDate, Parent_Opportunity__c FROM Opportunity WHERE Parent_Opportunity__c = :oppRenewal.Id];
+        Opportunity renewal = newrenewalOpps[0];
+        System.assertEquals(renewalRT.Id, renewal.RecordTypeId, 'The renewal opportunity should have the correct record type');
+        System.assertEquals('Renewal', renewal.StageName, 'The renewal opportunity should have the correct stage name');
+        System.assertEquals(oppRenewal.Id, renewal.Parent_Opportunity__c, 'The renewal opportunity should have the correct parent opportunity');
+    }
+}
