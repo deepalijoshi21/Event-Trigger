@@ -28,15 +28,15 @@ global class CreateTicketConcert implements Messaging.InboundEmailHandler {
                         List<String> columns = row.split(',');
                         String concertName = columns[0];
                         String contactId = columns[1];
-                        String noOfSeatsStr = columns[2].trim(); // remove leading/trailing spaces
-                        System.debug('noOfSeatsStr: ' + noOfSeatsStr); // debug statement to check the value
+                        String noOfSeatsStr = columns[2].trim(); // remove leading spaces
+                        System.debug('noOfSeatsStr: ' + noOfSeatsStr);
                         Integer noOfSeats = Integer.valueOf(noOfSeatsStr);
                         // Add the concert name to the set
                         concertNames.add(concertName);
                     }
                     
                     // Query the Concert object to get the concert IDs based on the concert names
-                    List<Concert__c> concerts = [SELECT Id, Name, Venue__c,Event_Date__c FROM Concert__c WHERE Name IN :concertNames AND Event_Date__c >= TODAY];
+                    List<Concert__c> concerts = [SELECT Id, Name, Venue__c,Event_Date__c FROM Concert__c WHERE Name IN: concertNames];
                     
                     // Create a map to store the concert IDs by name
                     Map<String, Id> concertIdsByName = new Map<String, Id>();
@@ -47,7 +47,7 @@ global class CreateTicketConcert implements Messaging.InboundEmailHandler {
                     // Iterate through the rows to create new tickets
                     List<Ticket__c> Ticketlist = new List<Ticket__c>();
                 	List<String> errors = new List<String>();
-                	String errorCsv = 'Concert Name, Contact Id, No. of Seats, Error\n';
+                	String errorCsv = 'Concert Name, Contact Id, No. of Seats, Message, Status\n';
                     for (String row : rows) {
                         List<String> columns = row.split(',');
                         String concertName = columns[0];
@@ -55,32 +55,35 @@ global class CreateTicketConcert implements Messaging.InboundEmailHandler {
                         String noOfSeatsStr = columns[2].trim();
                         Integer noOfSeats = Integer.valueOf(noOfSeatsStr);
                         Id concert = concertIdsByName.get(concertName);
-                        if (concert != null) {
+                        if (concert != null && contactId != null) {
                             Ticket__c tc = new Ticket__c();
         					tc.Concert__c = concert;
                             tc.Customer__c = contactId;
                             tc.Number_Of_Tickets__c = noOfSeats;
                             Ticketlist.add(tc);
+                            
                     	} 
-                        else {
-                            // Add the error to the error CSV
-                            errors.add('Concert name "' + concertName + '" not found or event date is not valid.');
-                            errorCsv += concertName + ',' + contactId + ',' + noOfSeatsStr + ',"Concert name not found or event date is not valid."\n';
-                        }     
                     }
-                   //Check list is not empty then insert
-                    if(!Ticketlist.isEmpty()){
-                        database.insert(Ticketlist,false);
-                     }
-                    // Email the error CSV to the sender
-                    if (!errors.isEmpty()) {
-                        Messaging.SingleEmailMessage message = new Messaging.SingleEmailMessage();
-                        String[] toAddresses = new String[] {email.fromAddress};
-                        message.setToAddresses(toAddresses);
-                        message.setSubject('Error importing tickets');
-                        message.setPlainTextBody('The following errors occurred while importing tickets:\n\n' + String.join(errors, '\n') + '\n\nPlease fix these errors and try again.');
-                        Messaging.SendEmailResult[] results = Messaging.sendEmail(new Messaging.SingleEmailMessage[] {message});
+                // Insert the records and get the save results
+                List<Database.SaveResult> saveResults = database.insert(Ticketlist, false);
+                
+                // Iterate through each returned result
+                for (Integer i = 0; i < saveResults.size(); i++) {
+                    Database.SaveResult sr = saveResults[i];
+                    String row = rows[i];
+                    
+                    if (sr.isSuccess()) {
+                        // Operation was successful, so get the ID of the record that was processed
+                        String ticketId = sr.getId();
+                        errorCsv += row +' , '+ 'Success'+' , '+  ticketId + '\n';
+                    } else {
+                        // Operation failed, so get all errors
+                        for(Database.Error err : sr.getErrors()) {
+                            errorCsv += row +' , '+ 'Error'+' , '+  err.getMessage() + '\n';
+                        }
                     }
+                }
+
                 // Email the error CSV to the sender
                   	if (errorCsv != '') {
                          Messaging.SingleEmailMessage message = new Messaging.SingleEmailMessage();
@@ -94,11 +97,17 @@ global class CreateTicketConcert implements Messaging.InboundEmailHandler {
                          message.setFileAttachments(new Messaging.EmailFileAttachment[] {csvAttachment});
                          message.setPlainTextBody('The following records could not be imported:\n\n');
                          Messaging.SendEmailResult[] results = Messaging.sendEmail(new Messaging.SingleEmailMessage[] {message});
+                         if (results[0].isSuccess()) {
+                            System.debug('Email sent successfully.');
+                        } else {
+                            System.debug('Failed to send email: ' + results[0].getErrors()[0].getMessage());
+                        }
                      }
 				}
 			}
 		}
         // Return the result for the Apex Email Service 
+      
       	return result;
 	}
 }
